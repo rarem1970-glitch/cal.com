@@ -1,0 +1,43 @@
+# rarem.: Testbau von Cal.com v6.2.0 mit Next.js- und Sharp-Sicherheitsupdate (TSK-118003).
+# Nur manuell gestartet. Baut das Image und legt es privat in der GitHub-Paketablage ab.
+# Keine Produktionsdaten: Datenbank-Adresse ist ein unerreichbarer Platzhalter, Schlüssel werden je Lauf zufällig erzeugt.
+name: Cal.com Sicherheitsbau
+on: workflow_dispatch
+permissions:
+  contents: read
+  packages: write
+jobs:
+  bauen:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 170
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Platz und Auslagerungsspeicher schaffen
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          sudo swapoff -a || true
+          sudo fallocate -l 10G /mnt/bau.swap && sudo chmod 600 /mnt/bau.swap && sudo mkswap /mnt/bau.swap && sudo swapon /mnt/bau.swap
+          free -m && df -h / /mnt
+      - name: Image bauen
+        env:
+          DATABASE_URL: postgresql://unused:unused@127.0.0.1:9/unused
+          MAX_OLD_SPACE_SIZE: "6144"
+          NEXT_PUBLIC_API_V2_URL: https://calcom.rarem.eu/api/v2
+          CALCOM_TELEMETRY_DISABLED: "1"
+          NEXT_PUBLIC_LICENSE_CONSENT: agree
+          NEXT_PUBLIC_WEBAPP_URL: https://calcom.rarem.eu
+        run: |
+          IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER}/rarem-calcom:6.2.0-sicherheit-${GITHUB_RUN_NUMBER}
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+          docker build --progress plain \
+            --build-arg DATABASE_URL --build-arg MAX_OLD_SPACE_SIZE \
+            --build-arg NEXT_PUBLIC_API_V2_URL --build-arg CALCOM_TELEMETRY_DISABLED \
+            --build-arg NEXT_PUBLIC_LICENSE_CONSENT --build-arg NEXT_PUBLIC_WEBAPP_URL \
+            -t "$IMAGE" .
+      - name: Versionen im Image pruefen
+        run: |
+          docker run --rm --entrypoint sh "$IMAGE" -c 'node -p "\"next \" + require(\"/calcom/node_modules/next/package.json\").version"; node -p "\"sharp \" + require(\"/calcom/node_modules/sharp/package.json\").version" 2>/dev/null || find /calcom -path "*node_modules/sharp/package.json" -maxdepth 6 -exec grep -m1 "\"version\"" {} \;'
+      - name: Privat ablegen
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker push "$IMAGE"
