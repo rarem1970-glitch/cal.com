@@ -1,0 +1,32 @@
+# rarem. 07.11.2026: Testbau-Image als Entwurfs-Release-Datei bereitstellen,
+# damit der Server es ohne neuen Paket-Zugang laden kann. Nach dem Test loeschen.
+name: Uebergabe Testbau
+on:
+  workflow_dispatch:
+    inputs:
+      nummer:
+        description: Laufnummer des Sicherheitsbaus
+        required: true
+permissions:
+  contents: write
+  packages: read
+jobs:
+  uebergeben:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - name: Image holen und packen
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NR: ${{ inputs.nummer }}
+        run: |
+          set -euo pipefail
+          BILD="ghcr.io/${GITHUB_REPOSITORY_OWNER}/rarem-calcom:6.2.0-sicherheit-${NR}"
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker pull "$BILD"
+          docker image inspect "$BILD" --format '{{.Id}} {{.Size}}'
+          mkdir teile
+          docker save "$BILD" | gzip -1 | split -b 1900m -d - teile/rarem-calcom-${NR}.tar.gz.
+          ( cd teile && sha256sum * > SHA256SUMS && cat SHA256SUMS && ls -l )
+          gh release create "testbau-${NR}" teile/* --draft --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" --title "Testbau ${NR} (nur intern, nach Test loeschen)" --notes "Uebergabe an den Server."
