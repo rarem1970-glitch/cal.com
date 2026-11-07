@@ -15,6 +15,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
+      - name: Platz schaffen
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache /usr/local/share/boost
+          sudo mkdir -p /mnt/teile && sudo chown "$USER" /mnt/teile
+          df -h / /mnt
       - name: Image holen und packen
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -25,8 +30,7 @@ jobs:
           echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
           docker pull "$BILD"
           docker image inspect "$BILD" --format '{{.Id}} {{.Size}}'
-          mkdir teile
-          docker save "$BILD" | gzip -1 | split -b 1900m -d - teile/rarem-calcom-${NR}.tar.gz.
-          ( cd teile && sha256sum * > SHA256SUMS && cat SHA256SUMS && ls -l )
-          gh release create "testbau-${NR}" teile/* --draft --repo "$GITHUB_REPOSITORY" \
+          docker save "$BILD" | gzip -1 | split -b 1900m -d - /mnt/teile/rarem-calcom-${NR}.tar.gz.
+          ( cd /mnt/teile && sha256sum * > SHA256SUMS && cat SHA256SUMS && ls -l )
+          gh release create "testbau-${NR}" /mnt/teile/* --draft --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" --title "Testbau ${NR} (nur intern, nach Test loeschen)" --notes "Uebergabe an den Server."
