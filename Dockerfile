@@ -44,11 +44,9 @@ RUN yarn config set httpTimeout 1200000 && yarn install && rm -rf .yarn/cache
 RUN yarn workspace @calcom/trpc run build
 RUN yarn --cwd packages/embeds/embed-core workspace @calcom/embed-core run build
 RUN yarn --cwd apps/web workspace @calcom/web run copy-app-store-static
-# Build-only memory reduction: no public browser source maps, no duplicate type check in next build
-# (separate tsc runs above cover trpc only; full type-check remains open), webpack memory optimizations, one worker.
-RUN node -e 'const f="apps/web/next.config.ts";const fs=require("fs");let s=fs.readFileSync(f,"utf8");const r=[["productionBrowserSourceMaps: true,","productionBrowserSourceMaps: false,\n    typescript: { ignoreBuildErrors: true },"],["optimizePackageImports: [\"@calcom/ui\"],","optimizePackageImports: [\"@calcom/ui\"],\n      webpackMemoryOptimizations: true,\n      cpus: 1,"]];for(const [a,b] of r){if(s.split(a).length!==2)throw new Error("pattern count "+a);s=s.replace(a,b)}fs.writeFileSync(f,s)' \
-  && cd apps/web && NEXT_TELEMETRY_DISABLED=1 yarn next build --webpack \
-  && rm -rf .next/cache /calcom/node_modules/.cache /calcom/.yarn/cache
+# Upstream-Bauschritt (rarem. 07.11.2026: der Spar-Umbau mit --webpack scheiterte an node:-Importen; Bau laeuft jetzt bei GitHub mit 8 GB).
+RUN yarn --cwd apps/web workspace @calcom/web run build
+RUN rm -rf node_modules/.cache .yarn/cache apps/web/.next/cache
 
 FROM builder AS builder-two
 
